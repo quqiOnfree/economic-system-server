@@ -146,6 +146,10 @@ public:
 	{
 		return inifile.write(name, mon.get_name(), std::to_string(number));
 	}
+	long double get_money(const money& mon)
+	{
+		return inifile.getDouble(name, mon.get_name());
+	}
 	user& operator=(const user& us)
 	{
 		if (this == &us)

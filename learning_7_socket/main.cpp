@@ -11,12 +11,17 @@
 
 #include "head_msg.hpp"
 #include "log_system.hpp"
-#include "./json/json.h"
 #include "boost/filesystem.hpp"
+#include "./json/json.h"
 #include "O2.hpp"
 #include "q_random.hpp"
 #include "inicpp.hpp"
 #include "classes.hpp"
+
+extern "C"
+{
+#	include "python/Python.h"
+}
 
 #pragma comment(lib, "q_random.lib")
 
@@ -29,22 +34,31 @@ namespace socket
 using namespace std;
 namespace fs = boost::filesystem;
 
-short ser_port = 1234;            //端口
-char ser_addr[32] = "127.0.0.1";  //地址
+unsigned short ser_port = 1234;            //端口
+char ser_addr[32] = "127.0.0.1";           //地址
+unsigned int thread_number = 1024;
 
 inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num);
 inline int id_th();
 inline void del_th(int th_num);
 
 static socket::SOCKET s;                       //初始化全局socket
-static thread threads[1024]{ thread() };       //初始化多线程列表
-static int thread_num[1024]{ 0 };              //初始化线程id列表
+static thread* threads;                        //初始化多线程列表
+static int* thread_num{ 0 };                   //初始化线程id列表
+static bool msg_head_mode = true;              //开启或关闭消息头
+static char version[32] = "v0.0.1";            //版本
 
-static Log log_s;
-static boost::filesystem::path s_path(boost::filesystem::current_path());
+static Log log_s;                              //日志系统
+static fs::path s_path(fs::current_path());    //本地位置
 
-static map<string, money> moneys;
-static map<string, user> users;
+static map<string, money> moneys;              //总货币
+static map<string, user> users;                //总用户
+static vector<string> ips;                     //允许的ip
+
+static PyObject* rsa_module;
+static PyObject* rsa_key;
+static PyObject* enrsa;
+static PyObject* dersa;
 
 inline void reload_config() //重写 ./config/data/json
 {
@@ -55,35 +69,48 @@ inline void reload_config() //重写 ./config/data/json
 
 	data["server_address"] = "127.0.0.1";
 	data["server_port"] = 1234;
+	data["server_thread_number"] = 1024;
+	data["server_msg_head_mode"] = true;
+	data["server_whitelist"] = Json::Value(Json::arrayValue);
 
 	json << data.toStyledString() << endl;
 
 	log_s.write("请填写 ./config/data.json");
 	json.close();
 	system("pause");
-	exit(0);
+	exit(-1);
 }
+
+//void crsa_key(vector<char *>& ve, const int size)
+//{
+//	PyObject* args =  PyObject_CallObject(rsa_key, Py_BuildValue("(i)", size));
+//	PyObject* v1;
+//	PyObject* v2;
+//	PyArg_ParseTuple(args, "y|y", &v1, &v2);
+//	//ve.push_back(v1);
+//	//ve.push_back(v2);
+//}
 
 int main()
 {
 	std::ios::sync_with_stdio(false);
 	std::cin.tie(nullptr);
 
-	if (boost::filesystem::create_directory("./logs"))
+	if (fs::create_directory("./logs"))
 	{
 		cout << "文件夹 ./logs 创建成功" << endl;
 	}
 	log_s = Log();
 	log_s.write("日志系统 加载成功");
 
-	if (boost::filesystem::create_directory("./config"))
+	if (fs::create_directory("./config"))
 	{
 		log_s.write("文件夹 ./config 创建成功");
 		reload_config();
 	}
 	else
 	{
-		if (boost::filesystem::exists("./config/data.json"))
+		if (fs::exists("./config/data.json"))
 		{
 			Json::Value value_j;
 			Json::Reader reader;
@@ -101,7 +128,7 @@ int main()
 			
 			if (reader.parse(data,value_j))
 			{
-				if (!value_j["server_address"].isNull())
+				if (!value_j["server_address"].isNull() && value_j["server_address"].isString())//设置ip
 				{
 					strcpy(ser_addr, value_j["server_address"].asCString());
 				}
@@ -109,9 +136,54 @@ int main()
 				{
 					reload_config();
 				}
-				if (!value_j["server_port"].isNull())
+				if (!value_j["server_port"].isNull() && value_j["server_port"].isInt())//设置端口
 				{
 					ser_port = value_j["server_port"].asInt();
+				}
+				else
+				{
+					reload_config();
+				}
+				if (!value_j["server_thread_number"].isNull() && value_j["server_thread_number"].isInt())//设置线程数
+				{
+					thread_number =  value_j["server_thread_number"].asUInt();
+					threads = new thread[thread_number]{ thread() };
+					thread_num = new int[thread_number] {0};
+				}
+				else
+				{
+					reload_config();
+				}
+
+				if (!value_j["server_msg_head_mode"].isNull() && value_j["server_msg_head_mode"].isBool())//设置消息头是否开启
+				{
+					if (value_j["server_msg_head_mode"].asBool())
+					{
+						msg_head_mode = true;
+					}
+					else
+					{
+						msg_head_mode = false;
+					}
+				}
+				else
+				{
+					reload_config();
+				}
+
+				if (!value_j["server_whitelist"].isNull() && value_j["server_whitelist"].isArray())//设置白名单ip
+				{
+					for (auto i = value_j["server_whitelist"].begin(); i != value_j["server_whitelist"].end(); i++)
+					{
+						if ((*i).isString())
+						{
+							ips.push_back((*i).asString());
+						}
+						else
+						{
+							reload_config();
+						}
+					}
 				}
 				else
 				{
@@ -130,7 +202,7 @@ int main()
 	}
 	log_s.write("文件 ./config/data.json 加载完成");
 
-	if (boost::filesystem::create_directory("./data"))
+	if (fs::create_directory("./data"))
 	{
 		log_s.write("文件夹 ./data 创建成功");
 	}
@@ -161,11 +233,26 @@ int main()
 	ini_us.~vector();
 	ini_user.~ifile();
 
+	//log_s.write("正在加载python...");
+	//Py_Initialize();
+	//PyRun_SimpleString("import os,sys,gc");
+	//PyRun_SimpleString("sys.path.append('./')");
+	//rsa_module = PyImport_ImportModule("py");
+	//rsa_key = PyObject_GetAttrString(rsa_module, "rsa_key");
+	//enrsa = PyObject_GetAttrString(rsa_module, "enrsa");
+	//dersa = PyObject_GetAttrString(rsa_module, "dersa");
+	//if (!Py_IsInitialized() || !rsa_module || !enrsa || !dersa)
+	//{
+	//	log_s.write("python加载失败");
+	//	return -1;
+	//}
+	//log_s.write("python加载完成");
+
 	socket::WSADATA wsaData;
 	if (socket::WSAStartup(514, &wsaData))
 	{
 		log_s.write("wsadata 未加载成功");
-		return 0;
+		return -1;
 	}
 	else
 	{
@@ -187,7 +274,7 @@ int main()
 	if (socket::listen(s, 1024))
 	{
 		log_s.write("监听失败");
-		return 0;
+		return -1;
 	}
 	else
 	{
@@ -219,6 +306,8 @@ int main()
 		}
 		std::memset(&client_addr, 0, sizeof(client_addr));
 	}
+
+	Py_Finalize();
 	system("pause");
 	return 0;
 }
@@ -244,19 +333,260 @@ inline int id_th()//获取进程id来创建
 	return NULL;
 }
 
-inline void send_msg(const string& json_head, const string& json_msg, const socket::SOCKET conn, const socket::sockaddr_in addr)
+inline void send_msg(const string& json_head, const Json::Value& json_msg, const socket::SOCKET conn, const socket::sockaddr_in addr)//这里是处理消息的地方
 {
-	make_head str;
-	Json::Value er;
-	char* strs;
+	if (msg_head_mode)
+	{
+		make_head str;
+		Json::Value er;
+		char* strs;
 
-	er[json_head] = json_msg;
-	str = make_head(er.toStyledString().c_str());
-	strs = str.get_head_str();
-	socket::send(conn, strs, str.get_len(), 0);
-	log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", er.toStyledString().c_str());
+		er[json_head] = json_msg;
+		str = make_head(er.toStyledString().c_str());
+		strs = str.get_head_str();
+		socket::send(conn, strs, str.get_len(), 0);
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", er.toStyledString().c_str());
 
-	delete[] strs;
+		delete[] strs;
+	}
+	else
+	{
+		Json::Value er;
+		er[json_head] = json_msg;
+		socket::send(conn, er.toStyledString().c_str(), strlen(er.toStyledString().c_str()), 0);
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", er.toStyledString().c_str());
+	}
+}
+
+inline bool process(char* msg, const socket::SOCKET conn, const socket::sockaddr_in addr)//处理数据
+{
+	Json::Reader reader;
+	Json::Value value_j;
+	try
+	{
+		reader.parse(msg, value_j);
+		if (!value_j["creat_new_money"].isNull())//创建货币
+		{
+			if (!(value_j["creat_new_money"]["value"].isNull() || value_j["creat_new_money"]["name"].isNull() || value_j["creat_new_money"]["creator"].isNull()))
+			{
+				if (moneys.count(value_j["creat_new_money"]["name"].asCString()))
+				{
+
+					send_msg("error", "该货币已经被创建", conn, addr);
+					return false;
+				}
+				money new_m(value_j["creat_new_money"]["name"].asCString(), atof(value_j["creat_new_money"]["value"].asString().c_str()), value_j["creat_new_money"]["creator"].asCString());
+				moneys[value_j["creat_new_money"]["name"].asCString()] = new_m;
+				send_msg("succeed", "创建货币成功", conn, addr);
+				for (auto i = users.begin(); i != users.end(); i++)
+				{
+					ini::ifile ini("./data/user.ini");
+					ini.write(i->first, new_m.get_name(), "0");
+				}
+				moneys[value_j["creat_new_money"]["name"].asCString()].reload();
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+
+		else if (!value_j["delete_money"].isNull())//删除货币
+		{
+			if (!value_j["delete_money"]["name"].isNull())
+			{
+				if (!moneys.count(value_j["delete_money"]["name"].asCString()))
+				{
+
+					send_msg("error", "没有该货币", conn, addr);
+					return false;
+				}
+				moneys[value_j["delete_money"]["name"].asCString()].delete_file();
+				for (auto i = users.begin(); i != users.end(); i++)
+				{
+					ini::ifile ini("./data/user.ini");
+					ini.deleteKey(i->first.c_str(), value_j["delete_money"]["name"].asCString());
+				}
+				moneys.erase(value_j["delete_money"]["name"].asCString());
+				send_msg("succeed", "删除货币成功", conn, addr);
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+
+		else if (!value_j["creat_new_user"].isNull())//创建用户
+		{
+			if (!(value_j["creat_new_user"]["name"].isNull() || value_j["creat_new_user"]["uuid"].isNull()))
+			{
+				if (users.count(value_j["creat_new_user"]["name"].asCString()))
+				{
+					send_msg("error", "该用户已经被创建", conn, addr);
+					return false;
+				}
+				user us(value_j["creat_new_user"]["name"].asCString(), value_j["creat_new_user"]["uuid"].asCString(), moneys);
+				users[value_j["creat_new_user"]["name"].asCString()] = us;
+				send_msg("succeed", "创建用户成功", conn, addr);
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+
+		else if (!value_j["get_exchange_rate"].isNull())//获取汇率
+		{
+			if (!(value_j["get_exchange_rate"]["money_name1"].isNull() || value_j["get_exchange_rate"]["money_name2"].isNull()))
+			{
+				if (!moneys.count(value_j["get_exchange_rate"]["money_name1"].asCString()))
+				{
+					send_msg("error", "没有此货币", conn, addr);
+					return false;
+				}
+				if (!moneys.count(value_j["get_exchange_rate"]["money_name2"].asCString()))
+				{
+					send_msg("error", "没有此货币", conn, addr);
+					return false;
+				}
+
+				send_msg("exchange_rate", to_string(moneys[value_j["get_exchange_rate"]["money_name1"].asCString()].get_value() / moneys[value_j["get_exchange_rate"]["money_name2"].asCString()].get_value()), conn, addr);
+
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+
+		else if (!value_j["get_user_money"].isNull())//获取用户的各货币持有量
+		{
+			if (!value_j["get_user_money"]["name"].isNull())
+			{
+				if (!users.count(value_j["get_user_money"]["name"].asCString()))
+				{
+					send_msg("error", "没有此用户", conn, addr);
+					return false;
+				}
+
+				Json::Value js;
+				ini::ifile ini("./data/user.ini");
+				for (auto i = moneys.begin(); i != moneys.end(); i++)
+				{
+					js[i->first] = to_string(ini.getDouble(value_j["get_user_money"]["name"].asCString(), i->first));
+				}
+
+				send_msg("user_money", js, conn, addr);
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+
+		else if (!value_j["get_version"].isNull())//获取服务端版本号
+		{
+			send_msg("version", string(version), conn, addr);
+		}
+
+		else if (!value_j["change_user_money"].isNull())//改变用户某货币的持有量，有set,add,remove三种指令
+		{
+			if (!(value_j["change_user_money"]["name"].isNull() || value_j["change_user_money"]["money_name"].isNull() || (value_j["change_user_money"]["add"].isNull() && value_j["change_user_money"]["remove"].isNull() && value_j["change_user_money"]["set"].isNull())))
+			{
+				if (!users.count(value_j["change_user_money"]["name"].asCString()))
+				{
+					send_msg("error", "没有此用户", conn, addr);
+					return false;
+				}
+				if (!moneys.count(value_j["change_user_money"]["money_name"].asCString()))
+				{
+					send_msg("error", "没有此货币", conn, addr);
+					return false;
+				}
+				if (!value_j["change_user_money"]["add"].isNull())//add类型
+				{
+					if (!value_j["change_user_money"]["add"].isString())
+					{
+						send_msg("error", "add的参数必须是string类型", conn, addr);
+						return false;
+					}
+					try
+					{
+						ini::ifile ini("./data/user.ini");
+						double siz = ini.getDouble(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString());
+						ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), to_string(siz + atof(value_j["change_user_money"]["add"].asCString())));
+						send_msg("succeed", "修改成功", conn, addr);
+					}
+					catch (...)
+					{
+						send_msg("error", "其中某些参数错误", conn, addr);
+						return false;
+					}
+				}
+				else if (!value_j["change_user_money"]["set"].isNull())//set类型
+				{
+					if (!value_j["change_user_money"]["set"].isString())
+					{
+						send_msg("error", "set的参数必须是string类型", conn, addr);
+						return false;
+					}
+					try
+					{
+						ini::ifile ini("./data/user.ini");
+						ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), to_string(atof(value_j["change_user_money"]["set"].asCString())));
+						send_msg("succeed", "修改成功", conn, addr);
+					}
+					catch (...)
+					{
+						send_msg("error", "其中某些参数错误", conn, addr);
+						return false;
+					}
+				}
+				else if (!value_j["change_user_money"]["remove"].isNull())//remove类型
+				{
+					if (!value_j["change_user_money"]["remove"].isString())
+					{
+						send_msg("error", "remove的参数必须是string类型", conn, addr);
+						return false;
+					}
+					try
+					{
+						ini::ifile ini("./data/user.ini");
+						double siz = ini.getDouble(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString());
+						ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), to_string(siz - atof(value_j["change_user_money"]["remove"].asCString())));
+						send_msg("succeed", "修改成功", conn, addr);
+					}
+					catch (...)
+					{
+						send_msg("error", "其中某些参数错误", conn, addr);
+						return false;
+					}
+				}
+			}
+			else
+			{
+				send_msg("error", "参数不足", conn, addr);
+				return false;
+			}
+		}
+		else
+		{
+			send_msg("error", "没有此指令", conn, addr);
+			return false;
+		}
+	}
+	catch (...)
+	{
+		send_msg("error", "服务器无法处理请求，貌似发送了错误的参数", conn, addr);
+		return false;
+	}
+	value_j.clear();
+	return true;
 }
 
 inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num)//每个进程的处理
@@ -266,8 +596,6 @@ inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num)//每个
 	size_t size;
 	unpack_head recv_msg;
 	make_head str;
-	Json::Reader reader;
-	Json::Value value_j;
 
 	log_s.write(inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), "连接至服务器，线程id:", to_string(th_num).c_str());
 	
@@ -280,208 +608,49 @@ inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num)//每个
 			break;
 		} 
 
-		try
+		if (!count(ips.begin(), ips.end(), string(inet_ntoa(addr.sin_addr))))
 		{
-			recv_msg = unpack_head(msg, size);//处理消息头
-		}
-		catch (const std::bad_alloc&)
-		{
-			send_msg("error", "你发的什么垃圾", conn, addr);
+			send_msg("error", "你不在服务器白名单", conn, addr);
+			log_s.write(inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), "不在白名单，自动断开连接");
+			socket::closesocket(conn);
 			return;
 		}
 
-		if (!recv_msg.can_get())
+		if (msg_head_mode)
 		{
-			do
-			{
-				size = socket::recv(conn, msg, sizeof(msg), 0);
-				recv_msg.add_str(msg, size);
-			} while (!recv_msg.can_get());
-		}
-
-		do //在这里处理数据 awa
-		{
-			strs = recv_msg.get_char();
-			strcpy(msg, strs);
-			delete[] strs;
 			try
 			{
-				reader.parse(string(msg), value_j);
-				if (!value_j["creat_new_money"].isNull())
-				{
-					if (!(value_j["creat_new_money"]["value"].isNull() || value_j["creat_new_money"]["name"].isNull() || value_j["creat_new_money"]["creator"].isNull()))
-					{
-						if (moneys.count(value_j["creat_new_money"]["name"].asCString()))
-						{
-
-							send_msg("error", "该货币已经被创建", conn, addr);
-							break;
-						}
-						money new_m(value_j["creat_new_money"]["name"].asCString(), atof(value_j["creat_new_money"]["value"].asString().c_str()), value_j["creat_new_money"]["creator"].asCString());
-						moneys[value_j["creat_new_money"]["name"].asCString()] = new_m;
-						send_msg("succeed", "创建货币成功", conn, addr);
-						for (auto i = users.begin(); i != users.end(); i++)
-						{
-							ini::ifile ini("./data/user.ini");
-							ini.write(i->first, new_m.get_name(), "0");
-						}
-						moneys[value_j["creat_new_money"]["name"].asCString()].reload();
-					}
-					else
-					{
-						send_msg("error", "参数不足", conn, addr);
-						break;
-					}
-				}
-
-				else if (!value_j["delete_money"].isNull())
-				{
-					if (!value_j["delete_money"]["name"].isNull())
-					{
-						if (!moneys.count(value_j["delete_money"]["name"].asCString()))
-						{
-
-							send_msg("error", "没有该货币", conn, addr);
-							break;
-						}
-						moneys[value_j["delete_money"]["name"].asCString()].delete_file();
-						for (auto i = users.begin(); i != users.end(); i++)
-						{
-							ini::ifile ini("./data/user.ini");
-							ini.deleteKey(i->first.c_str(), value_j["delete_money"]["name"].asCString());
-						}
-						moneys.erase(value_j["delete_money"]["name"].asCString());
-						send_msg("succeed", "删除货币成功", conn, addr);
-					}
-					else
-					{
-						send_msg("error", "参数不足", conn, addr);
-						break;
-					}
-				}
-
-				else if (!value_j["creat_new_user"].isNull())
-				{
-					if (!(value_j["creat_new_user"]["name"].isNull() || value_j["creat_new_user"]["uuid"].isNull()))
-					{
-						if (users.count(value_j["creat_new_user"]["name"].asCString()))
-						{
-							send_msg("error", "该用户已经被创建", conn, addr);
-							break;
-						}
-						user us(value_j["creat_new_user"]["name"].asCString(), value_j["creat_new_user"]["uuid"].asCString(), moneys);
-						users[value_j["creat_new_user"]["name"].asCString()] = us;
-						send_msg("succeed", "创建用户成功", conn, addr);
-					}
-					else
-					{
-						send_msg("error", "参数不足", conn, addr);
-						break;
-					}
-				}
-
-				else if (!value_j["get_exchange_rate"].isNull())
-				{
-					if (!(value_j["get_exchange_rate"]["money_name1"].isNull() || value_j["get_exchange_rate"]["money_name2"].isNull()))
-					{
-						if (!moneys.count(value_j["get_exchange_rate"]["money_name1"].asCString()))
-						{
-							send_msg("error", "没有此货币", conn, addr);
-							break;
-						}
-						if (!moneys.count(value_j["get_exchange_rate"]["money_name2"].asCString()))
-						{
-							send_msg("error", "没有此货币", conn, addr);
-							break;
-						}
-
-						send_msg("exchange_rate", to_string(moneys[value_j["get_exchange_rate"]["money_name1"].asCString()].get_value()/moneys[value_j["get_exchange_rate"]["money_name2"].asCString()].get_value()), conn, addr);
-
-					}
-					else
-					{
-						send_msg("error", "参数不足", conn, addr);
-						break;
-					}
-				}
-				
-				else if (!value_j["change_user_money"].isNull())
-				{
-					if (!(value_j["change_user_money"]["name"].isNull() || value_j["change_user_money"]["money_name"].isNull() || (value_j["change_user_money"]["add"].isNull() && value_j["change_user_money"]["remove"].isNull() && value_j["change_user_money"]["set"].isNull())))
-					{
-						if (!users.count(value_j["change_user_money"]["name"].asCString()))
-						{
-							send_msg("error", "没有此用户", conn, addr);
-							break;
-						}
-						if (!moneys.count(value_j["change_user_money"]["money_name"].asCString()))
-						{
-							send_msg("error", "没有此货币", conn, addr);
-							break;
-						}
-						if (!value_j["change_user_money"]["add"].isNull())
-						{
-							try
-							{
-								ini::ifile ini("./data/user.ini");
-								int siz = ini.getInt(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString());
-								ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), (siz + value_j["change_user_money"]["add"].asInt()));
-								send_msg("succeed", "修改成功", conn, addr);
-							}
-							catch (const std::exception&)
-							{
-								send_msg("error", "其中某些参数错误", conn, addr);
-								break;
-							}
-						}
-						else if (!value_j["change_user_money"]["set"].isNull())
-						{
-							try
-							{
-								ini::ifile ini("./data/user.ini");
-								ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), (value_j["change_user_money"]["set"].asInt()));
-								send_msg("succeed", "修改成功", conn, addr);
-							}
-							catch (const std::exception&)
-							{
-								send_msg("error", "其中某些参数错误", conn, addr);
-								break;
-							}
-						}
-						else if (!value_j["change_user_money"]["remove"].isNull())
-						{
-							try
-							{
-								ini::ifile ini("./data/user.ini");
-								int siz = ini.getInt(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString());
-								ini.write(value_j["change_user_money"]["name"].asCString(), value_j["change_user_money"]["money_name"].asCString(), (siz-value_j["change_user_money"]["remove"].asInt()));
-								send_msg("succeed", "修改成功", conn, addr);
-							}
-							catch (const std::exception&)
-							{
-								send_msg("error", "其中某些参数错误", conn, addr);
-								break;
-							}
-						}
-					}
-					else
-					{
-						send_msg("error", "参数不足", conn, addr);
-						break;
-					}
-				}
-				else
-				{
-					send_msg("error", "没有此指令", conn, addr);
-					break;
-				}
+				recv_msg = unpack_head(msg, size);//处理消息头
 			}
-			catch (const std::exception&)
+			catch (...)
 			{
-				send_msg("error", "服务器无法处理请求", conn, addr);
+				send_msg("error", "你发的什么垃圾", conn, addr);
+				return;
 			}
 
-		} while (recv_msg.can_get());
+			if (!recv_msg.can_get())
+			{
+				do
+				{
+					size = socket::recv(conn, msg, sizeof(msg), 0);
+					recv_msg.add_str(msg, size);
+				} while (!recv_msg.can_get());
+			}
+
+			do
+			{
+				strs = recv_msg.get_char();
+				strcpy(msg, strs);
+				delete[] strs;
+
+				process(msg, conn, addr);
+
+			} while (recv_msg.can_get());
+		}
+		else
+		{
+			process(msg, conn, addr);
+		}
 
 		std::memset(&msg, 0, sizeof(msg));//把msg数据全部设为0
 	}
