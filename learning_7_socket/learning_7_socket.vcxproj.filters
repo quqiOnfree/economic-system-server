@@ -39,6 +39,9 @@
     <ClCompile Include="inicpp.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="input_cmd.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="head_msg.hpp">
@@ -81,6 +84,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="classes.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="input_cmd.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
