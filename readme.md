@@ -13,7 +13,8 @@
 - 先编译
 - 执行exe文件
 - 填写config中的data文件
-```{
+```
+{
    "server_address" : "127.0.0.1",   //设置服务端的ip地址
    "server_msg_head_mode" : false,   //是否打开消息头模式，默认是开的
    "server_port" : 1234,             //设置服务端的端口
