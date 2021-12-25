@@ -17,11 +17,7 @@
 #include "q_random.hpp"
 #include "inicpp.hpp"
 #include "classes.hpp"
-
-extern "C"
-{
-#	include "python/Python.h"
-}
+#include "input_cmd.hpp"
 
 #pragma comment(lib, "q_random.lib")
 
@@ -42,23 +38,22 @@ inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num);
 inline int id_th();
 inline void del_th(int th_num);
 
-static socket::SOCKET s;                       //初始化全局socket
-static thread* threads;                        //初始化多线程列表
-static int* thread_num{ 0 };                   //初始化线程id列表
-static bool msg_head_mode = true;              //开启或关闭消息头
-static char version[32] = "v0.0.1";            //版本
+socket::SOCKET s;                       //初始化全局socket
+thread* threads;                        //初始化多线程列表
+int* thread_num{ 0 };                   //初始化线程id列表
+bool msg_head_mode = true;              //开启或关闭消息头
+char version[32] = "v0.0.1";			       //版本
+short num_version = 0;                         //数字版本
+char oldest_version[32] = "v0.0.1";            //最老版本
+short oldest_num_version = 0;                  //最老数字版本
 
-static Log log_s;                              //日志系统
-static fs::path s_path(fs::current_path());    //本地位置
+Log log_s;                              //日志系统
 
-static map<string, money> moneys;              //总货币
-static map<string, user> users;                //总用户
-static vector<string> ips;                     //允许的ip
+fs::path s_path(fs::current_path());    //本地位置
 
-static PyObject* rsa_module;
-static PyObject* rsa_key;
-static PyObject* enrsa;
-static PyObject* dersa;
+map<string, money> moneys;              //总货币
+map<string, user> users;                //总用户
+vector<string> ips;                     //允许的ip
 
 inline void reload_config() //重写 ./config/data/json
 {
@@ -81,20 +76,15 @@ inline void reload_config() //重写 ./config/data/json
 	exit(-1);
 }
 
-//void crsa_key(vector<char *>& ve, const int size)
-//{
-//	PyObject* args =  PyObject_CallObject(rsa_key, Py_BuildValue("(i)", size));
-//	PyObject* v1;
-//	PyObject* v2;
-//	PyArg_ParseTuple(args, "y|y", &v1, &v2);
-//	//ve.push_back(v1);
-//	//ve.push_back(v2);
-//}
-
-int main()
+void init()
 {
+	static bool thread_reload = false;
+	static bool cmd_reload = false;
+
 	std::ios::sync_with_stdio(false);
 	std::cin.tie(nullptr);
+	rgb_init();
+	rgb_set_wr(204, 204, 204);
 
 	if (fs::create_directory("./logs"))
 	{
@@ -118,15 +108,15 @@ int main()
 			string data_2;
 
 			std::fstream json;
-			json.open(string("./config/data.json"),ios_base::in);
+			json.open(string("./config/data.json"), ios_base::in);
 			while (!json.eof())
 			{
 				json >> data_2;
 				data += data_2;
 			}
 			json.close();
-			
-			if (reader.parse(data,value_j))
+
+			if (reader.parse(data, value_j))
 			{
 				if (!value_j["server_address"].isNull() && value_j["server_address"].isString())//设置ip
 				{
@@ -146,9 +136,13 @@ int main()
 				}
 				if (!value_j["server_thread_number"].isNull() && value_j["server_thread_number"].isInt())//设置线程数
 				{
-					thread_number =  value_j["server_thread_number"].asUInt();
-					threads = new thread[thread_number]{ thread() };
-					thread_num = new int[thread_number] {0};
+					if (!thread_reload)
+					{
+						thread_number = value_j["server_thread_number"].asUInt();
+						threads = new thread[thread_number]{ thread() };
+						thread_num = new int[thread_number] {0};
+						thread_reload = true;
+					}
 				}
 				else
 				{
@@ -208,10 +202,10 @@ int main()
 	}
 
 	log_s.write("正在加载货币中...");
-	ini::ifile ini_money ("./data/money.ini");
+	ini::ifile ini_money("./data/money.ini");
 	vector<string> ini_sec;
 	ini_money.getSection(ini_sec);
-	for (auto i = ini_sec.begin();i!=ini_sec.end();i++)
+	for (auto i = ini_sec.begin(); i != ini_sec.end(); i++)
 	{
 		money mon((*i).c_str());
 		moneys[(*i)] = mon;
@@ -233,21 +227,18 @@ int main()
 	ini_us.~vector();
 	ini_user.~ifile();
 
-	//log_s.write("正在加载python...");
-	//Py_Initialize();
-	//PyRun_SimpleString("import os,sys,gc");
-	//PyRun_SimpleString("sys.path.append('./')");
-	//rsa_module = PyImport_ImportModule("py");
-	//rsa_key = PyObject_GetAttrString(rsa_module, "rsa_key");
-	//enrsa = PyObject_GetAttrString(rsa_module, "enrsa");
-	//dersa = PyObject_GetAttrString(rsa_module, "dersa");
-	//if (!Py_IsInitialized() || !rsa_module || !enrsa || !dersa)
-	//{
-	//	log_s.write("python加载失败");
-	//	return -1;
-	//}
-	//log_s.write("python加载完成");
+	if (!cmd_reload)
+	{
+		log_s.write("正在加载指令系统...");
+		thread th = thread(input_system);
+		th.detach();
+		log_s.write("指令系统加载完成");
+		cmd_reload = true;
+	}
+}
 
+int init_socket()
+{
 	socket::WSADATA wsaData;
 	if (socket::WSAStartup(514, &wsaData))
 	{
@@ -290,6 +281,7 @@ int main()
 	int can;
 
 	log_s.write("socket接收部分 启动成功");
+
 	log_s.write("全部加载已经完成\n");
 	while (true)
 	{
@@ -306,10 +298,13 @@ int main()
 		}
 		std::memset(&client_addr, 0, sizeof(client_addr));
 	}
-
-	Py_Finalize();
-	system("pause");
 	return 0;
+}
+
+int main()
+{
+	init();
+	return init_socket();
 }
 
 inline void del_th(int th_num)
@@ -491,7 +486,12 @@ inline bool process(char* msg, const socket::SOCKET conn, const socket::sockaddr
 
 		else if (!value_j["get_version"].isNull())//获取服务端版本号
 		{
-			send_msg("version", string(version), conn, addr);
+			Json::Value v;
+			v["str_version"] = string(version);
+			v["int_version"] = to_string(num_version);
+			v["oldest_str_version"] = string(oldest_version);
+			v["oldest_int_version"] = to_string(oldest_num_version);
+			send_msg("version", v, conn, addr);
 		}
 
 		else if (!value_j["change_user_money"].isNull())//改变用户某货币的持有量，有set,add,remove三种指令

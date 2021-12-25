@@ -366,3 +366,11 @@ config/
 data/
 logs/
 x64/
+py/
+python/
+/learning_7_socket/python38_d.lib
+/learning_7_socket/python38.lib
+/learning_7_socket/python3.dll
+/learning_7_socket/python3_d.dll
+/learning_7_socket/python38.dll
+/learning_7_socket/python38_d.dll
