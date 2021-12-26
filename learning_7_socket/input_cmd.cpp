@@ -37,13 +37,17 @@ vector<string> split(const char* str,const size_t size_)
 	vector<string> re;
 	char name[1024]{ 0 };
 	long long size = 0;
-	for (long long i = 0; i < size_; i++)
+	for (long long i = 0; i < size_ - 1; i++)
 	{
-		if (!str[i])
+		if (!str[i] || str[i] == 32)
 		{
-			size = 0;
-			re.push_back(name);
-			memset(&name, 0, sizeof(name));
+			if (str[i + 1])
+			{
+				size = 0;
+				re.push_back(name);
+				memset(&name, 0, sizeof(name));
+			}
+			
 		}
 		else
 		{
@@ -51,6 +55,7 @@ vector<string> split(const char* str,const size_t size_)
 			size++;
 		}
 	}
+	re.push_back(name);
 
 	return re;
 }
@@ -66,11 +71,25 @@ void input_system()
 {
 	char str[1024]{ 0 };
 	vector<string> cmd;
+	size_t size = 0;
+	char s = 0;
 	while (true)
 	{
+		size = 0;
+		s = 0;
+
 		try
 		{
-			cin >> str;
+			while (true)
+			{
+				s = cin.get();
+				if (s == 10)
+				{
+					break;
+				}
+				str[size] = s;
+				size++;
+			}
 			if (!cin || cin.fail() && cin.eof())
 			{
 				cin.clear();
@@ -87,7 +106,8 @@ void input_system()
 				rgb_set_wr(255,246,143);
 				cout << "\thelp\t\t\t--帮助" << endl
 					<< "\tversion\t\t\t--版本" << endl
-					<< "\treload\t\t\t--重载" << endl;
+					<< "\treload\t\t\t--重载" << endl
+					<< "\tlist\t\t\t--列表" << endl;
 				rgb_set_wr(204, 204, 204);
 			}
 			else if (cmd[0] == "version")
@@ -104,6 +124,41 @@ void input_system()
 				rgb_set_wr(0, 255, 0);
 				cout << "重载成功！" << endl;
 				rgb_set_wr(204, 204, 204);
+			}
+			else if (cmd[0] == "list")
+			{
+				if (cmd.size() > 1)
+				{
+					if (cmd[1] == "user")
+					{
+						rgb_set_wr(192, 255, 62);
+						cout << '\t' << '[';
+						for (auto i = users.begin(); i != users.end(); i++)
+						{
+							cout << i->first << ',';
+						}
+						cout << ']' << endl;
+						rgb_set_wr(204, 204, 204);
+					}
+					else if (cmd[1] == "money")
+					{
+						rgb_set_wr(192, 255, 62);
+						cout << '\t' << '[';
+						for (auto i = moneys.begin(); i != moneys.end(); i++)
+						{
+							cout << i->first << ',';
+						}
+						cout << ']' << endl;
+						rgb_set_wr(204, 204, 204);
+					}
+				}
+				else
+				{
+					rgb_set_wr(255, 246, 143);
+					cout << "\tlist user\t\t--用户列表" << endl
+						<< "\tlist money\t\t--货币列表" << endl;
+					rgb_set_wr(204, 204, 204);
+				}
 			}
 			else
 			{

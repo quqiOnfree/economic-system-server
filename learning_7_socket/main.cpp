@@ -85,7 +85,7 @@ void init()
 	std::cin.tie(nullptr);
 	rgb_init();
 	rgb_set_wr(204, 204, 204);
-
+	rgb_set_wr(255, 246, 143);
 	if (fs::create_directory("./logs"))
 	{
 		cout << "文件夹 ./logs 创建成功" << endl;
@@ -235,10 +235,12 @@ void init()
 		log_s.write("指令系统加载完成");
 		cmd_reload = true;
 	}
+	rgb_set_wr(204, 204, 204);
 }
 
 int init_socket()
 {
+	rgb_set_wr(255, 246, 143);
 	socket::WSADATA wsaData;
 	if (socket::WSAStartup(514, &wsaData))
 	{
@@ -281,8 +283,9 @@ int init_socket()
 	int can;
 
 	log_s.write("socket接收部分 启动成功");
-
+	rgb_set_wr(0, 255, 0);
 	log_s.write("全部加载已经完成\n");
+	rgb_set_wr(204, 204, 204);
 	while (true)
 	{
 		conn = socket::accept(s, (socket::sockaddr*)&client_addr, &len);
@@ -328,6 +331,26 @@ inline int id_th()//获取进程id来创建
 	return NULL;
 }
 
+inline char* deln(const Json::Value& v)
+{
+	const char* str = v.toStyledString().c_str();
+	char* str2 = const_cast<char*>(v.toStyledString().c_str());
+	size_t size = 0;
+	for (size_t i = 0; i < strlen(str); i++)
+	{
+		if (str[i] != '\t' && str[i] != ' ' && str[i] != '\n')
+		{
+			str2[size] = str[i];
+			size++;
+		}
+	}
+	for (size_t i = strlen(str2); i > size-1; i--)
+	{
+		str2[i] = 0;
+	}
+	return str2;
+}
+
 inline void send_msg(const string& json_head, const Json::Value& json_msg, const socket::SOCKET conn, const socket::sockaddr_in addr)//这里是处理消息的地方
 {
 	if (msg_head_mode)
@@ -340,7 +363,7 @@ inline void send_msg(const string& json_head, const Json::Value& json_msg, const
 		str = make_head(er.toStyledString().c_str());
 		strs = str.get_head_str();
 		socket::send(conn, strs, str.get_len(), 0);
-		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", er.toStyledString().c_str());
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(er));
 
 		delete[] strs;
 	}
@@ -349,7 +372,7 @@ inline void send_msg(const string& json_head, const Json::Value& json_msg, const
 		Json::Value er;
 		er[json_head] = json_msg;
 		socket::send(conn, er.toStyledString().c_str(), strlen(er.toStyledString().c_str()), 0);
-		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", er.toStyledString().c_str());
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(er));
 	}
 }
 
