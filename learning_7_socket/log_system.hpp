@@ -10,20 +10,19 @@
 
 inline static const char* q_get_time()
 {
-	using std::to_string;
-	time_t* t_t = new time_t;
-	*t_t = time(NULL);
-	tm* time_ = localtime(t_t);
-
+	std::time_t tt = std::time(0);
+	std::tm* time_ = std::localtime((const std::time_t*)&tt);
 	std::string msgs("");
-	msgs += '[' + to_string(time_->tm_mday) + " " + to_string(time_->tm_hour)
-		+ ':' + to_string(time_->tm_min) + ':' + to_string(time_->tm_sec)
+	msgs += '[' +
+		(time_->tm_mday >= 10 ? std::to_string(time_->tm_mday) : std::string("0") + std::to_string(time_->tm_mday)) + " "
+		+ (time_->tm_hour >= 10 ? std::to_string(time_->tm_hour) : std::string("0") + std::to_string(time_->tm_hour))
+		+ ':' +
+		(time_->tm_min >= 10 ? std::to_string(time_->tm_min) : std::string("0") + std::to_string(time_->tm_min)) + ':'
+		+ (time_->tm_sec >= 10 ? std::to_string(time_->tm_sec) : std::string("0") + std::to_string(time_->tm_sec))
 		+ "]";
-	char* asd = new char[msgs.size() + 1];
-	strcpy(asd, msgs.c_str());
-	delete t_t;
-	
-	return asd;
+	char* n_str = new char[msgs.size() + 1]{ 0 };
+	strcpy(n_str, msgs.c_str());
+	return n_str;
 }
 
 class Log
@@ -44,7 +43,7 @@ private:
 		{
 			const char* t = q_get_time();
 			fputs(t, file);
-			printf("%s%s", t, "\t");
+			printf("%s", t);
 			delete t;
 			have_write_time = true;
 		}
@@ -75,7 +74,7 @@ public:
 		{
 			const char* t = q_get_time();
 			fputs(t, file);
-			printf("%s%s", t, "\t");
+			printf("%s", t);
 			delete t;
 			have_write_time = true;
 		}
@@ -116,7 +115,7 @@ bool Log::write(const char* msg_, const Args... args)
 	}
 	const char* t = q_get_time();
 	fputs(t, file);
-	printf("%s%s", t, "\t");
+	printf("%s", t);
 	delete t;
 
 	printf("%s", msg_);

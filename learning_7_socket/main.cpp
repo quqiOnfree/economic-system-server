@@ -14,10 +14,11 @@
 #include "boost/filesystem.hpp"
 #include "./json/json.h"
 #include "O2.hpp"
-#include "q_random.hpp"
 #include "inicpp.hpp"
 #include "classes.hpp"
 #include "input_cmd.hpp"
+
+#include "endecode.hpp"
 
 #pragma comment(lib, "q_random.lib")
 
@@ -47,7 +48,7 @@ short num_version = 0;                         //数字版本
 char oldest_version[32] = "v0.0.1";            //最老版本
 short oldest_num_version = 0;                  //最老数字版本
 
-Log log_s;                              //日志系统
+Log log_s;                            //日志系统
 
 fs::path s_path(fs::current_path());    //本地位置
 
@@ -84,8 +85,6 @@ void init()
 	std::ios::sync_with_stdio(false);
 	std::cin.tie(nullptr);
 	rgb_init();
-	rgb_set_wr(204, 204, 204);
-	rgb_set_wr(255, 246, 143);
 	if (fs::create_directory("./logs"))
 	{
 		cout << "文件夹 ./logs 创建成功" << endl;
@@ -235,12 +234,16 @@ void init()
 		log_s.write("指令系统加载完成");
 		cmd_reload = true;
 	}
-	rgb_set_wr(204, 204, 204);
+
+	log_s.write("正在生成rsa密钥...");
+	auto pk = getRsaKey(2048);
+	writeRsaKey(pk);
+	EVP_PKEY_free(pk);
+	log_s.write("生成rsa密钥成功");
 }
 
 int init_socket()
 {
-	rgb_set_wr(255, 246, 143);
 	socket::WSADATA wsaData;
 	if (socket::WSAStartup(514, &wsaData))
 	{
@@ -283,9 +286,7 @@ int init_socket()
 	int can;
 
 	log_s.write("socket接收部分 启动成功");
-	rgb_set_wr(0, 255, 0);
 	log_s.write("全部加载已经完成\n");
-	rgb_set_wr(204, 204, 204);
 	while (true)
 	{
 		conn = socket::accept(s, (socket::sockaddr*)&client_addr, &len);
@@ -331,24 +332,19 @@ inline int id_th()//获取进程id来创建
 	return NULL;
 }
 
-inline char* deln(const Json::Value& v)
+inline const char* deln(const Json::Value& v)
 {
-	const char* str = v.toStyledString().c_str();
-	char* str2 = const_cast<char*>(v.toStyledString().c_str());
-	size_t size = 0;
+	char str[1024] = {0};
+	strcpy(str, v.toStyledString().c_str());
+	string str2;
 	for (size_t i = 0; i < strlen(str); i++)
 	{
 		if (str[i] != '\t' && str[i] != ' ' && str[i] != '\n')
 		{
-			str2[size] = str[i];
-			size++;
+			str2 += str[i];
 		}
 	}
-	for (size_t i = strlen(str2); i > size-1; i--)
-	{
-		str2[i] = 0;
-	}
-	return str2;
+	return str2.c_str();
 }
 
 inline void send_msg(const string& json_head, const Json::Value& json_msg, const socket::SOCKET conn, const socket::sockaddr_in addr)//这里是处理消息的地方

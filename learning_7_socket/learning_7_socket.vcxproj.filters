@@ -42,6 +42,9 @@
     <ClCompile Include="input_cmd.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="endecode.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="head_msg.hpp">
@@ -89,6 +92,12 @@
     <ClInclude Include="input_cmd.hpp">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="endecode.hpp">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="json\json_internalarray.inl">
@@ -103,5 +112,10 @@
     <None Include="json\sconscript">
       <Filter>头文件\json</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="money_system.rc">
+      <Filter>资源文件</Filter>
+    </ResourceCompile>
   </ItemGroup>
 </Project>

@@ -14,11 +14,12 @@ def asd(anys):
 
 s = socket.socket()
 s.connect(("127.0.0.1",1234))
-asd({"get_version":{}})
-asd({"creat_new_money":{"name":"1p","value":"10","creator":"quqi"}})
-asd({"creat_new_money":{"name":"2p","value":"10","creator":"quqi"}})
+while True:
+    asd({"get_version":{}})
+    asd({"creat_new_money":{"name":"1p","value":"10","creator":"quqi"}})
+    asd({"creat_new_money":{"name":"2p","value":"10","creator":"quqi"}})
 
-asd({"creat_new_user":{"name":"quqi","uuid":"asdasdasd"}})
-asd({"change_user_money":{"name":"quqi","money_name":"1p","set":"1000"}})
-asd({"get_exchange_rate":{"money_name1":"2p","money_name2":"1p"}})
-asd({"get_user_money":{"name":"quqi"}})
+    asd({"creat_new_user":{"name":"quqi","uuid":"asdasdasd"}})
+    asd({"change_user_money":{"name":"quqi","money_name":"1p","set":"1000"}})
+    asd({"get_exchange_rate":{"money_name1":"2p","money_name2":"1p"}})
+    asd({"get_user_money":{"name":"quqi"}})
