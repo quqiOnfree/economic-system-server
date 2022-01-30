@@ -61,12 +61,12 @@ namespace ini
 		return WritePrivateProfileString(appname, keyname, to_string(value).c_str(), filename.c_str());
 	}
 
-	bool ifile::write(const std::string& appname, const std::string& keyname, const std::string& str)
+	bool ifile::write(const std::string appname, const std::string keyname, const std::string str)
 	{
 		return WritePrivateProfileString(appname.c_str(), keyname.c_str(), str.c_str(), filename.c_str());
 	}
 
-	bool ifile::write(const std::string& appname, const std::string& keyname, const int value)
+	bool ifile::write(const std::string appname, const std::string keyname, const int value)
 	{
 		return WritePrivateProfileString(appname.c_str(), keyname.c_str(), to_string(value).c_str(), filename.c_str());
 	}
@@ -78,7 +78,7 @@ namespace ini
 		return strs;
 	}
 
-	const char* ifile::getCStr(const std::string& appname, const std::string& keyname)
+	const char* ifile::getCStr(const std::string appname, const std::string keyname)
 	{
 		char strs[10240] = { 0 };
 		GetPrivateProfileString(appname.c_str(), keyname.c_str(), "", strs, sizeof(strs), filename.c_str());
@@ -92,14 +92,14 @@ namespace ini
 		return static_cast<long double>(atof(strs));
 	}
 
-	long double ifile::getInt(const std::string& appname, const std::string& keyname)
+	long double ifile::getInt(const std::string appname, const std::string keyname)
 	{
 		char strs[10240] = { 0 };
 		GetPrivateProfileString(appname.c_str(), keyname.c_str(), "", strs, sizeof(strs), filename.c_str());
 		return static_cast<long double>(atof(strs));
 	}
 
-	long double ifile::getDouble(const std::string& appname, const std::string& keyname)
+	long double ifile::getDouble(const std::string appname, const std::string keyname)
 	{
 		char strs[10240] = { 0 };
 		GetPrivateProfileString(appname.c_str(), keyname.c_str(), "", strs, sizeof(strs), filename.c_str());
@@ -165,7 +165,7 @@ namespace ini
 		return;
 	}
 
-	std::string& ifile::getString(const std::string& appname, const std::string& keyname)
+	std::string ifile::getString(const std::string appname, const std::string keyname)
 	{
 		char strs[10240] = { 0 };
 		GetPrivateProfileString(appname.c_str(), keyname.c_str(), "", strs, sizeof(strs), filename.c_str());
@@ -178,7 +178,7 @@ namespace ini
 		return WritePrivateProfileString(name, NULL, NULL, filename.c_str());
 	}
 
-	bool ifile::deleteSection(const std::string& name)
+	bool ifile::deleteSection(const std::string name)
 	{
 		return WritePrivateProfileString(name.c_str(), NULL, NULL, filename.c_str());
 	}
@@ -188,7 +188,7 @@ namespace ini
 		return WritePrivateProfileString(section, keyname, NULL, filename.c_str());
 	}
 
-	bool ifile::deleteKey(const std::string& section, const std::string& keyname)
+	bool ifile::deleteKey(const std::string section, const std::string keyname)
 	{
 		return WritePrivateProfileString(section.c_str(), keyname.c_str(), NULL, filename.c_str());
 	}

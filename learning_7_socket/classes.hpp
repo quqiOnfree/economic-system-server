@@ -75,6 +75,7 @@ private:
 	std::string name;
 	std::string uuid;
 	std::string creat_time;
+	std::string creator;
 	ini::ifile inifile;
 public:
 	user() :name(""), uuid("")
@@ -110,10 +111,11 @@ public:
 		creat_time = dt;
 		inifile.write(name_, "creat_time", dt);
 	}
-	user(const std::string& name_, const std::string& uuid_, const std::map<std::string, money>& mons) : name(name_), uuid(uuid_)
+	user(const std::string& name_, const std::string& uuid_, const std::string& creator_, const std::map<std::string, money>& mons) : name(name_), uuid(uuid_), creator(creator_)
 	{
 		inifile = ini::ifile("./data/user.ini");
 		inifile.write(name, "uuid", uuid);
+		inifile.write(name, "creator", creator);
 
 		time_t now = time(NULL);
 		char* dt = ctime(&now);

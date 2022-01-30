@@ -34,7 +34,7 @@
 {"creat_new_money":{"name":"创建的货币名","value":"基准数值(int/double)","creator":"创建者"}}
 //添加货币
 
-{"creat_new_user":{"name":"创建的用户名","uuid":"用户名的uuid（可以不用写）"}}
+{"creat_new_user":{"name":"创建的用户名","creator":"创建者","uuid":"用户名的uuid（可以不用写）"}}
 //添加用户
 
 {"delete_money":{"name":"删除的货币名"}}
@@ -45,7 +45,7 @@
 {"change_user_money":{"name":"用户名","money_name":"货币名","remove":"减少的数值(int/double)"}}
 //改变用户货币
 
-{"get_user_money":{"name":"用户名"}}
+{"get_user_info":{"name":"用户名"}}
 获取用户货币
 
 {"get_exchange_rate":{"money_name1":"货币1","money_name2":"货币2"}}

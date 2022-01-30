@@ -266,6 +266,8 @@ int init_socket()
 
 	log_s.write("socket套接字 创建成功");
 
+	log_s.write("监听ip地址：", socket::inet_ntoa(serv_addr.sin_addr), ":", to_string(short(socket::ntohs(serv_addr.sin_port))).c_str());
+
 	socket::bind(s, (socket::sockaddr*)&serv_addr, sizeof(serv_addr));
 	if (socket::listen(s, 1024))
 	{
@@ -332,19 +334,18 @@ inline int id_th()//获取进程id来创建
 	return NULL;
 }
 
-inline const char* deln(const Json::Value& v)
+inline string deln(const string str)
 {
-	char str[1024] = {0};
-	strcpy(str, v.toStyledString().c_str());
-	string str2;
-	for (size_t i = 0; i < strlen(str); i++)
+	string str_ = str;
+	string str__;
+	for (auto i = str_.begin(); i != str_.end(); i++)
 	{
-		if (str[i] != '\t' && str[i] != ' ' && str[i] != '\n')
+		if (*i != '\n' && *i != '\t')
 		{
-			str2 += str[i];
+			str__ += *i;
 		}
 	}
-	return str2.c_str();
+	return str__;
 }
 
 inline void send_msg(const string& json_head, const Json::Value& json_msg, const socket::SOCKET conn, const socket::sockaddr_in addr)//这里是处理消息的地方
@@ -356,10 +357,10 @@ inline void send_msg(const string& json_head, const Json::Value& json_msg, const
 		char* strs;
 
 		er[json_head] = json_msg;
-		str = make_head(er.toStyledString().c_str());
+		str = make_head(deln(Json::FastWriter().write(er)).c_str());
 		strs = str.get_head_str();
 		socket::send(conn, strs, str.get_len(), 0);
-		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(er));
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(Json::FastWriter().write(er)).c_str());
 
 		delete[] strs;
 	}
@@ -367,8 +368,8 @@ inline void send_msg(const string& json_head, const Json::Value& json_msg, const
 	{
 		Json::Value er;
 		er[json_head] = json_msg;
-		socket::send(conn, er.toStyledString().c_str(), strlen(er.toStyledString().c_str()), 0);
-		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(er));
+		socket::send(conn, deln(Json::FastWriter().write(er)).c_str(), strlen(deln(Json::FastWriter().write(er)).c_str()), 0);
+		log_s.write("server>>", inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>", deln(Json::FastWriter().write(er)).c_str());
 	}
 }
 
@@ -434,14 +435,14 @@ inline bool process(char* msg, const socket::SOCKET conn, const socket::sockaddr
 
 		else if (!value_j["creat_new_user"].isNull())//创建用户
 		{
-			if (!(value_j["creat_new_user"]["name"].isNull() || value_j["creat_new_user"]["uuid"].isNull()))
+			if (!(value_j["creat_new_user"]["name"].isNull() || value_j["creat_new_user"]["uuid"].isNull() || value_j["creat_new_user"]["creator"].isNull()))
 			{
 				if (users.count(value_j["creat_new_user"]["name"].asCString()))
 				{
 					send_msg("error", "该用户已经被创建", conn, addr);
 					return false;
 				}
-				user us(value_j["creat_new_user"]["name"].asCString(), value_j["creat_new_user"]["uuid"].asCString(), moneys);
+				user us(value_j["creat_new_user"]["name"].asCString(), value_j["creat_new_user"]["uuid"].asCString(), value_j["creat_new_user"]["creator"].asCString(), moneys);
 				users[value_j["creat_new_user"]["name"].asCString()] = us;
 				send_msg("succeed", "创建用户成功", conn, addr);
 			}
@@ -477,11 +478,11 @@ inline bool process(char* msg, const socket::SOCKET conn, const socket::sockaddr
 			}
 		}
 
-		else if (!value_j["get_user_money"].isNull())//获取用户的各货币持有量
+		else if (!value_j["get_user_info"].isNull())//获取用户的各货币持有量
 		{
-			if (!value_j["get_user_money"]["name"].isNull())
+			if (!value_j["get_user_info"]["name"].isNull())
 			{
-				if (!users.count(value_j["get_user_money"]["name"].asCString()))
+				if (!users.count(value_j["get_user_info"]["name"].asCString()))
 				{
 					send_msg("error", "没有此用户", conn, addr);
 					return false;
@@ -491,10 +492,14 @@ inline bool process(char* msg, const socket::SOCKET conn, const socket::sockaddr
 				ini::ifile ini("./data/user.ini");
 				for (auto i = moneys.begin(); i != moneys.end(); i++)
 				{
-					js[i->first] = to_string(ini.getDouble(value_j["get_user_money"]["name"].asCString(), i->first));
+					js["money"][i->first] = to_string(ini.getDouble(value_j["get_user_info"]["name"].asCString(), i->first));
 				}
 
-				send_msg("user_money", js, conn, addr);
+				js["uuid"] = ini.getString(value_j["get_user_info"]["name"].asString(), "uuid");
+				js["creat_time"] = ini.getString(value_j["get_user_info"]["name"].asString(), "creat_time");
+				js["creator"] = ini.getString(value_j["get_user_info"]["name"].asString(), "creator");
+
+				send_msg("user_info", js, conn, addr);
 			}
 			else
 			{
@@ -659,6 +664,7 @@ inline void run(socket::SOCKET conn, socket::sockaddr_in addr, int th_num)//每个
 			do
 			{
 				strs = recv_msg.get_char();
+				log_s.write(inet_ntoa(addr.sin_addr), ":", to_string(short(socket::ntohs(addr.sin_port))).c_str(), ">>server>>", strs);
 				strcpy(msg, strs);
 				delete[] strs;
 
